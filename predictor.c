@@ -49,6 +49,12 @@ int pcMasked;
 void LOCAL_update(uint32_t pc, uint8_t outcome);
 //end local
 
+//tournament
+int global_mask;
+int chooser;
+uint8_t *choose_cntr;
+void TOURNAMENT_update(uint32_t pc, uint8_t outcome);
+//end tournament
 //
 //TODO: Add your own Branch Predictor data structures here
 //
@@ -64,9 +70,7 @@ uint8_t gshare(uint32_t pc)
     if(decision == ST || decision == WT)
         return TAKEN;
     else
-        return NOTTAKEN;
-    
-    
+        return NOTTAKEN;  
     
 }
 
@@ -83,23 +87,31 @@ uint8_t local(uint32_t pc)
     
 }
 
-/*
-//chooser predictor for tournament predictor
-unit8_t choose_predictor(uint32_t pc)
+//gshare for tournament, separate function to take care of mask variables
+uint8_t tournament_gshare(uint32_t GHR)
 {
-	//TODO
-
+    // printf("in gshare ");
+    // return TAKEN;
+    // index1 = (GHR ^ (pc & global_mask)) & global_mask;
+    uint8_t decision = BHT[GHR & global_mask];
+    if(decision == ST || decision == WT)
+        return TAKEN;
+    else
+        return NOTTAKEN;  
+    
 }
 
 uint8_t tournament(uint32_t pc)
 {
-	if(chooser == SN || chooser == WN)
-		return gshare(pc); //call gshare if chooser predictor is 00 or 01
-	else if (chooser == WT || chooser == ST)
+	//chooser = choose_predictor(pc);
+	chooser = choose_cntr[GHR & global_mask];
+	if(chooser <= WN)
+		return tournament_gshare(GHR); //call gshare if chooser predictor is 00 or 01
+	else 
 		return local(pc); // call local if chooser predictor is 10 or 11
 	
 }
-*/
+
 //------------------------------------//
 //        Predictor Functions         //
 //------------------------------------//
@@ -149,6 +161,38 @@ init_predictor()
         }
         break;
         case TOURNAMENT:
+        {
+        	//local
+        	mask = ((1 << pcIndexBits ) - 1);
+        	local_mask = ((1 << lhistoryBits) -1);
+        	PHT = malloc(sizeof(int) * (mask+1));
+        	BHT_local = malloc(sizeof(uint8_t) * (local_mask+1));
+        	int i;
+	   		for(i=0; i < (mask+1); i++)
+    		{
+        		PHT[i]= 0;
+    		}
+    		for(i=0; i < (local_mask+1); i++)
+    		{
+    			BHT_local[i]=WN;
+    		}
+    		//end local
+    		//gshare
+    		GHR = 0;
+  	 		global_mask = ((1 << ghistoryBits ) - 1);
+    		BHT = malloc(sizeof(uint8_t)*(global_mask+1));
+	   		for(i=0; i < (global_mask+1); i++)
+    		{
+        		BHT[i]= WN;
+    		}
+    		//end gshare
+    		choose_cntr = malloc(sizeof(uint8_t) * (global_mask+1));
+    		for(i=0; i < (global_mask+1); i++)
+    		{
+        		choose_cntr[i]= WN;
+    		}
+        }
+        break;
         case CUSTOM:
         default:
             break;
@@ -181,7 +225,7 @@ make_prediction(uint32_t pc)
         	return local(pc);
         	break;
         case TOURNAMENT:
-//        	return tournament(pc);
+        	return tournament(pc);
         	break;
         case CUSTOM:
         default:
@@ -213,6 +257,7 @@ train_predictor(uint32_t pc, uint8_t outcome)
         	LOCAL_update(pc, outcome);
         	break;
         case TOURNAMENT:
+        	TOURNAMENT_update(pc, outcome);
         	break;
         case CUSTOM:
         	break;
@@ -273,6 +318,77 @@ train_predictor(uint32_t pc, uint8_t outcome)
 	PHT[pcMasked] = ( PHT[pcMasked] << 1);
 	PHT[pcMasked] |= outcome;
 	PHT[pcMasked] = PHT[pcMasked] & local_mask;
+ }
  
+ void TOURNAMENT_update(uint32_t pc, uint8_t outcome)
+ {
+ 	//local part
+	pcMasked = (pc & mask);
+	LOCAL_update(pc, outcome);
+	//end local part
+	
+	//chooser
+	uint8_t gflag, lflag;
+	gflag = tournament_gshare(GHR);
+	lflag = local(pc);
+	
+	if(outcome==1)
+	{
+		if(gflag==1 && lflag == 0 )
+		{
+			//SN and WN of chooser should direct towards Global predictor
+			if(choose_cntr[GHR] > SN)
+			{
+				choose_cntr[GHR] -= 1;
+			}
+		}
+		else if (gflag==0 && lflag==1)
+		{
+			//WT and ST of chooser should direct towards Local predictor
+			if(choose_cntr[GHR] < ST)
+			{
+				choose_cntr[GHR] += 1;
+			}
+		}
+	}
+	else if(outcome == 0)
+	{
+		if(gflag==0 && lflag == 1 ) //case when global predicts correctly
+		{
+			//SN and WN of chooser should direct towards Global predictor
+			if(choose_cntr[GHR] > SN)
+			{
+				choose_cntr[GHR] -= 1;
+			}
+		}
+		else if (gflag==1 && lflag==0) //case when local predicts correctly
+		{
+			//WT and ST of chooser should direct towards Local predictor
+			if(choose_cntr[GHR] < ST)
+			{
+				choose_cntr[GHR] += 1;
+			}
+		}
+	}
+	
+	//global part
+ 	int global_index = GHR & global_mask;
+ 	if(outcome==1)
+	{
+ 		if(BHT[global_index] < ST)
+ 		{
+			 BHT[global_index] += 1;
+ 		}
+ 
+	}
+	else 
+	{
+ 		if( BHT[global_index]>SN )
+ 		BHT[global_index] -= 1;
+	}
+	GHR = (GHR << 1);
+	GHR |= outcome ;
+	GHR = GHR & global_mask; 
+	//end global part
  
  }
