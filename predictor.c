@@ -44,6 +44,7 @@ void GHR_update(uint32_t pc, uint8_t outcome);
 //local
 
 int *PHT;
+uint8_t *BHT_local;
 int pcMasked;
 void LOCAL_update(uint32_t pc, uint8_t outcome);
 //end local
@@ -60,7 +61,6 @@ uint8_t gshare(uint32_t pc)
     // return TAKEN;
     index1 = (GHR ^ (pc & mask)) & mask;
     uint8_t decision = BHT[index1];
-    
     if(decision == ST || decision == WT)
         return TAKEN;
     else
@@ -75,7 +75,7 @@ uint8_t local(uint32_t pc)
 {
     
     pcMasked = (pc & mask);
-    uint8_t decision = BHT[ ((PHT[pcMasked]) & local_mask) ];
+    uint8_t decision = BHT_local[ ((PHT[pcMasked]) & local_mask) ];
     if(decision == ST || decision == WT)
         return TAKEN;
     else
@@ -83,6 +83,23 @@ uint8_t local(uint32_t pc)
     
 }
 
+/*
+//chooser predictor for tournament predictor
+unit8_t choose_predictor(uint32_t pc)
+{
+	//TODO
+
+}
+
+uint8_t tournament(uint32_t pc)
+{
+	if(chooser == SN || chooser == WN)
+		return gshare(pc); //call gshare if chooser predictor is 00 or 01
+	else if (chooser == WT || chooser == ST)
+		return local(pc); // call local if chooser predictor is 10 or 11
+	
+}
+*/
 //------------------------------------//
 //        Predictor Functions         //
 //------------------------------------//
@@ -97,6 +114,7 @@ init_predictor()
     //
     switch (bpType) {
         case STATIC:
+        	break;
         case GSHARE:
         {
             //initializing gshare data structures
@@ -110,13 +128,14 @@ init_predictor()
     		}
 	    	//end
 	    }
+	    break;
         case LOCAL:
         {
         	// initializing local data structures
         	mask = ((1 << pcIndexBits ) - 1);
         	local_mask = ((1 << lhistoryBits) -1);
         	PHT = malloc(sizeof(int) * (mask+1));
-        	BHT = malloc(sizeof(uint8_t) * (local_mask+1));
+        	BHT_local = malloc(sizeof(uint8_t) * (local_mask+1));
         	int i;
 	   		for(i=0; i < (mask+1); i++)
     		{
@@ -124,10 +143,11 @@ init_predictor()
     		}
     		for(i=0; i < (local_mask+1); i++)
     		{
-    			BHT[i]=WN;
+    			BHT_local[i]=WN;
     		}      	
         	//end
         }
+        break;
         case TOURNAMENT:
         case CUSTOM:
         default:
@@ -153,11 +173,16 @@ make_prediction(uint32_t pc)
     switch (bpType) {
         case STATIC:
             return TAKEN;
+            break;
         case GSHARE:
             return gshare(pc);
+            break;
         case LOCAL:
         	return local(pc);
+        	break;
         case TOURNAMENT:
+//        	return tournament(pc);
+        	break;
         case CUSTOM:
         default:
             break;
@@ -180,12 +205,17 @@ train_predictor(uint32_t pc, uint8_t outcome)
     
     switch (bpType) {
         case STATIC:
+        	break;
         case GSHARE:
             GHR_update(pc, outcome);
+            break;
         case LOCAL:
         	LOCAL_update(pc, outcome);
+        	break;
         case TOURNAMENT:
+        	break;
         case CUSTOM:
+        	break;
         default:
             break;
     }
@@ -228,16 +258,16 @@ train_predictor(uint32_t pc, uint8_t outcome)
  	int pattern = PHT[pcMasked] & local_mask;
  	if(outcome==1)
 	{
- 		if(BHT[ pattern ] < ST)
+ 		if(BHT_local[ pattern ] < ST)
  		{
-			 BHT[ pattern ] += 1;
+			 BHT_local[ pattern ] += 1;
  		}
  
 	}
 	else 
 	{
- 		if( BHT[pattern] >SN )
- 		BHT[ pattern ] -= 1;
+ 		if( BHT_local[pattern] >SN )
+ 		BHT_local[ pattern ] -= 1;
 	}
 	//updating each pattern in the PHT
 	PHT[pcMasked] = ( PHT[pcMasked] << 1);
