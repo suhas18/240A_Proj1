@@ -6,6 +6,6 @@ The application reads in trace files with branch addresses and ouput of the bran
 
 Traces are piped into the application with a command like so:
 
-bunzip2 -kc <trace_file.bz2> | ./predictor --<option>
+bunzip2 -kc \<trace_file.bz2\> | ./predictor --\<option\>
 
 <option> can be gshare:N OR local:M:N OR tournament:M:N:P OR custom; where M, N, P are positive integers of reasonable size (for something that can be implemented in hardware).
